@@ -15,15 +15,50 @@ class ReactiveFollowGap(Node):
         # Topics & Subs, Pubs
         lidarscan_topic = '/scan'
         drive_topic = '/drive'
-
+        
         # TODO: Subscribe to LIDAR
+        self.laser_sub = self.create_subscription (
+            LaserScan,
+            '/scan',
+            self.lidar_callback,
+            10
+        )
+
         # TODO: Publish to drive
+        self.drive_pub = self.create_publisher(
+            AckermannDriveStamped,
+            '/drive',
+            10
+        )
+
+        self.window = 5
+        self.depth  = 3
+
+        self.min_index = 0
+        self.max_index = 0
 
     def preprocess_lidar(self, ranges):
         """ Preprocess the LiDAR scan array. Expert implementation includes:
             1.Setting each value to the mean over some window
             2.Rejecting high values (eg. > 3m)
         """
+        for i, val in enumerate(ranges): 
+            mean_of_values = 0
+            check_end = 0
+
+            for j in range(5):
+                if (i+j >= len(ranges)):
+                    check_end = 1
+                    break
+
+                if (ranges[j] > self.depth):
+                    ranges[j] = self.depth
+
+                mean_of_values += ranges[i+j]
+
+            if (check_end == 0):
+                ranges[i] = mean_of_values/self.window
+
         proc_ranges = ranges
         return proc_ranges
 
@@ -44,7 +79,16 @@ class ReactiveFollowGap(Node):
         """
         ranges = data.ranges
         proc_ranges = self.preprocess_lidar(ranges)
-        
+
+        # only do this if statement once
+        if not(self.min_index and self.max_index):
+            # initialize angle at horizontal right
+            self.min_index = int((45*(np.pi/180)) / data.angle_increment) 
+            # initialize angle at horizontal left
+            self.max_index = int(self.min_index + (np.pi / data.angle_increment))
+
+        # for x in range(min_index, max_index)
+
         # TODO:
         #Find closest point to LiDAR
 
