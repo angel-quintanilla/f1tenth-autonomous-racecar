@@ -22,7 +22,7 @@ class ReactiveFollowGap(Node):
             self.lidar_callback,
             10
         )
-
+        
         self.drive_pub = self.create_publisher(
             AckermannDriveStamped,
             '/drive',
@@ -42,6 +42,7 @@ class ReactiveFollowGap(Node):
             1.Setting each value to the mean over some window
             2.Rejecting high values (eg. > 3m)
         """
+        
         for i, val in enumerate(ranges):
             mean_of_values = 0
             check_end = False
@@ -114,6 +115,7 @@ class ReactiveFollowGap(Node):
         """ Process each LiDAR scan as per the Follow Gap algorithm & publish an AckermannDriveStamped Message
         """
         ranges = data.ranges
+        
         proc_ranges = self.preprocess_lidar(ranges, data)
 
         # only do this if statement once, *initialize*
@@ -126,6 +128,7 @@ class ReactiveFollowGap(Node):
         # for x in range(self.min_index, self.max_index)
 
         closest_index = 0
+
         #Find closest point to LiDAR
             # Loop through entire valid range of indices
         for x in range(self.min_index, self.max_index):
