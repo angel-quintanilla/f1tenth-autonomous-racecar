@@ -15,6 +15,22 @@ class ReactiveFollowGap(Node):
         # Topics & Subs, Pubs
         lidarscan_topic = '/scan'
         drive_topic = '/drive'
+        
+        self.laser_sub = self.create_subscription (
+            LaserScan,
+            lidarscan_topic,
+            self.lidar_callback,
+            10
+        )
+        self.drive_pub = self.create_publisher(
+            AckermannDriveStamped,
+            drive_topic,
+            10
+        )
+
+        self.window = 5
+        self.depth  = 3.0
+        self.car_radius = 0.5/2
 
         self.laser_sub = self.create_subscription (
             LaserScan,
@@ -33,11 +49,14 @@ class ReactiveFollowGap(Node):
         self.CAR_RADIUS = 1.2
         self.VELOCITY = 1.0
 
+
     def preprocess_lidar(self, ranges):
         """ Preprocess the LiDAR scan array. Expert implementation includes:
             1.Setting each value to the mean over some window
             2.Rejecting high values (eg. > 3m)
         """
+        
+        
         for i, j in enumerate(ranges):
             if j > self.MAX_ADMISSABLE_DIST:
                 ranges[i] = self.MAX_ADMISSABLE_DIST
@@ -73,6 +92,7 @@ class ReactiveFollowGap(Node):
                 # print(4)
                 curr_gap_i = i
                 inGap = True
+
     
         if(curr_gap_j-curr_gap_i > max_gap_j-max_gap_i):
             # print("swapped")
@@ -88,8 +108,9 @@ class ReactiveFollowGap(Node):
 
 
     def find_best_point(self, start_i, end_i, ranges):
-        """Start_i & end_i are start and end indicies of max-gap range, respectively
+        """ Start_i & end_i are start and end indicies of max-gap range, respectively
         Return index of best point in ranges
+
 	    Naive: Choose the furthest point within ranges and go there
         """
         max_index = start_i 
@@ -107,6 +128,7 @@ class ReactiveFollowGap(Node):
         Find closest point to LiDAR
         Eliminate all points inside 'bubble' (set them to zero) 
         """
+
 
 
         #get out min index 
@@ -151,6 +173,7 @@ class ReactiveFollowGap(Node):
         """
     
         ranges = data.ranges
+
         ranges = self.preprocess_lidar(ranges)
         
         
@@ -180,6 +203,7 @@ class ReactiveFollowGap(Node):
         drive_msg.drive.speed = self.VELOCITY
         drive_msg.drive.steering_angle = best_point*data.angle_increment + data.angle_min
         self.drive_pub.publish(drive_msg)
+
 
 
 
