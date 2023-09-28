@@ -30,17 +30,19 @@ class ReactiveFollowGap(Node):
         )
 
         self.VELOCITY = 1.0 # speed
-        self.MAX_ADMISSABLE_DIST = 3.0 # floor all greater values to this if scanned
+        self.MAX_ADMISSABLE_DIST = 3.0 # ceil all greater values to this if scanned
         self.MIN_ADMISSABLE_DIST = 0.3 # anything X meters away from us is now not even considered for gaps
-        self.CAR_RADIUS = .5 # width in radius to bubble out
+        self.CAR_RADIUS = .30 # width in radius to bubble out
         self.SAFE_WALL_DISTANCE = 0.1 # the safest distance to be from the wall
 
         # speed and angle comparison values declaration
-        self.STRAIGHT_AHEAD_SPEED = 3.0
+        self.STRAIGHT_AHEAD_SPEED = 4.0
         self.STRAIGHT_AHEAD_THRESHOLD = 10*np.pi/180
-        self.WIDE_TURN_SPEED = 1.5
+        self.WIDE_TURN_SPEED = 2.0
         self.WIDE_TURN_THRESHOLD = 20*np.pi/180
         self.SHARP_TURN_SPEED = 0.75
+        self.DISPARITY_SIZE = 1.5 # difference in 2 scans
+        self.LIDAR_CAR_INTERFERENCE = 10*np.pi/180
 
     def preprocess_lidar(self, ranges):
         """ Preprocess the LiDAR scan array. Expert implementation includes:
@@ -53,26 +55,24 @@ class ReactiveFollowGap(Node):
         return ranges
 
     def find_max_gap(self, free_space_ranges, direct_right_index, direct_left_index):
-        """ Return the start index & end index of the max gap in free_space_ranges
-        """
-        ranges = free_space_ranges
-
+        """ Return the start index & end index of the max gap in free_space_ranges """
         max_gap_i, max_gap_j = direct_right_index, direct_right_index
         curr_gap_i, curr_gap_j = direct_right_index, direct_right_index
         inGap = False
 
+        # loop through every index -90 to +90
         for i in range(direct_right_index, direct_left_index+1):
-            if(inGap and ranges[i] <= self.MIN_ADMISSABLE_DIST):
-                if(curr_gap_j-curr_gap_i > max_gap_j-max_gap_i):
-                    max_gap_i, max_gap_j = curr_gap_i, curr_gap_j
-                inGap = False
-            elif(inGap and ranges[i] >= self.MIN_ADMISSABLE_DIST):
-                curr_gap_j = i;
-            elif(not inGap and ranges[i] <= self.MIN_ADMISSABLE_DIST):
-                continue
-            elif(not inGap and ranges[i] >= self.MIN_ADMISSABLE_DIST):
-                curr_gap_i = i
-                inGap = True
+            if(inGap): # if in a gap
+                if (free_space_ranges[i] <= self.MIN_ADMISSABLE_DIST):
+                    if(curr_gap_j-curr_gap_i > max_gap_j-max_gap_i):
+                        max_gap_i, max_gap_j = curr_gap_i, curr_gap_j
+                    inGap = False
+                elif(free_space_ranges[i] >= self.MIN_ADMISSABLE_DIST):
+                    curr_gap_j = i;
+            elif(not inGap): # if not in a gap
+                if(free_space_ranges[i] >= self.MIN_ADMISSABLE_DIST):
+                    curr_gap_i = i
+                    inGap = True
 
     
         if(curr_gap_j-curr_gap_i > max_gap_j-max_gap_i):
@@ -85,8 +85,7 @@ class ReactiveFollowGap(Node):
         """ Start_i & end_i are start and end indices of max-gap range, respectively
         Return index of best point in ranges
 
-	    Naive: Choose the furthest point within ranges and go there
-        """
+	    Naive: Choose the furthest point within ranges and go there """
         # start and end indices of max gap
         max_index_start = start_i 
         max_index_end = start_i
@@ -99,35 +98,33 @@ class ReactiveFollowGap(Node):
         # therefore centering the car in the hallway
         return int((max_index_start+max_index_end)/2)
 
-    def bubble(self, ranges, direct_right_index, direct_left_index, angle_increment):
-        """
-        Find closest point to LiDAR
-        Eliminate all points inside 'bubble' (set them to zero)
-        """
-        #Find closest point to LiDAR
-        min_index = direct_right_index
-        for i in range(direct_right_index, direct_left_index+1):
-            if ranges[i] < ranges[min_index]:
-                min_index = i
-        
-        # print(f"Closest Point Angle:\t{(min_index*angle_increment+angle_min)*180/np.pi}") 
-        # get our angle by using arctan
-        bubble_rads = abs(np.arctan(self.CAR_RADIUS/ranges[min_index]))
-        # number of indices to 'bubble'
-        bubble_indices = (int)(bubble_rads/angle_increment)
+    def extend_disparities(self, data, ranges, direct_right_index, direct_left_index):
+        extended_ranges = ranges
 
+        for i in range(direct_right_index, direct_left_index):
+            # Calculate the disparity as the difference between adjacent LiDAR readings
+            disparity = ranges[i] - ranges[i + 1]
+            # if positive, bubble right, if negative, bubble left
 
-        #Eliminate all points inside 'bubble' (set them to zero) 
-        for i in range(0, bubble_indices+1):
-            currentBubbleRight = min_index+i 
-            currentBubbleLeft = min_index-i
+            # accounts for zeros
+            if ranges[i] == 0 or ranges[i+1] == 0:
+                continue
 
-            if currentBubbleRight < len(ranges):
-                ranges[currentBubbleRight] = 0 
-            if currentBubbleLeft > 0:
-                ranges[currentBubbleLeft] = 0
-        
-        return min_index
+            # find the number of indices needed to "bubble"
+            radians = abs(np.arctan(self.CAR_RADIUS/min(ranges[i], ranges[i+1])))
+            indices = (int)(radians/data.angle_increment)
+            
+
+            # if disparity is within our tunable size
+            if (np.abs(disparity) > self.DISPARITY_SIZE):
+                # Extend the disparity by half the width of the car
+                for j in range(0, indices):
+                    index = i+j if disparity < 0 else i-j
+                    if index < 0 or index >= len(extended_ranges):
+                        continue
+                    extended_ranges[index] = 0
+
+        return extended_ranges
 
     def print_ranges_fancy(self, data):
         """ Takes data as param, returns nothing. Purpose is to print a nice 
@@ -151,18 +148,18 @@ class ReactiveFollowGap(Node):
         """ Process each LiDAR scan as per the Follow Gap algorithm & publish an AckermannDriveStamped Message
         """
         self.preprocess_lidar(data.ranges)
-        
+
         # indices that correlate to -90 (right) and 90 (left) degrees
         direct_right_index = int((np.pi/4)/data.angle_increment)
         direct_left_index = int(direct_right_index+np.pi/data.angle_increment)
         
         # TODO: Implement disparity and replace bubble. Fixes lookahead dist.
         # Call to the bubble function, it does every bubble task
-        self.bubble(data.ranges, direct_right_index, direct_left_index, data.angle_increment)
+        data.ranges = self.extend_disparities(data, data.ranges, direct_right_index, direct_left_index)
 
         #Find the gap with max length
         maxGapStart_i, maxGapEnd_i = self.find_max_gap(data.ranges, direct_right_index, direct_left_index)
-        #print(f"From {maxGapStart_i} to {maxGapEnd_i}")
+        # print(f"From {maxGapStart_i} to {maxGapEnd_i}")
         # self.print_ranges_fancy(data=data)
 
         #Find the best point in the gap 
@@ -170,6 +167,8 @@ class ReactiveFollowGap(Node):
         # print(best_point)
         # self.print_ranges_fancy(data=data)
 
+        # due to car interference, offset len(data.ranges) by indices_to_offset_end
+        indices_to_offset_end = int(self.LIDAR_CAR_INTERFERENCE/data.angle_increment)
         """ Both of these statements account for cornering. If we're turning
         either to the left or to the right, check every value in that range.
         If the value of any points in that range are less than a tuned safe
@@ -179,8 +178,8 @@ class ReactiveFollowGap(Node):
                 if data.ranges[x] < self.SAFE_WALL_DISTANCE:
                     best_point = int(len(data.ranges)/2)
                     break
-        elif (int(len(data.ranges)/2) < best_point < len(data.ranges)):
-            for x in range(direct_left_index, len(data.ranges)):
+        elif (int(len(data.ranges)/2) < best_point < (len(data.ranges) - indices_to_offset_end)):
+            for x in range(direct_left_index, (len(data.ranges) - indices_to_offset_end)):
                 if data.ranges[x] < self.SAFE_WALL_DISTANCE:
                     best_point = int(len(data.ranges)/2)
                     break
@@ -210,7 +209,6 @@ class ReactiveFollowGap(Node):
         drive_msg.drive.speed = self.VELOCITY
         drive_msg.drive.steering_angle = angle
         self.drive_pub.publish(drive_msg)
-
 
 def main(args=None):
     rclpy.init(args=args)
