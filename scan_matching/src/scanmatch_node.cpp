@@ -117,8 +117,9 @@ public:
         col.g = 1.0;
         col.a = 1.0;
         points_viz->addPoints(transformed_points, col);
-        corr_viz->addCorrespondences(corresponds);
         points_viz->publishPoints();
+
+        corr_viz->addCorrespondences(corresponds);
         corr_viz->publishCorrespondences();
 
         RCLCPP_INFO(this->get_logger(), "Count: %i", count);
