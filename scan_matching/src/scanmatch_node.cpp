@@ -53,7 +53,7 @@ private:
     geometry_msgs::msg::TransformStamped tr;
 
     PointVisualizer *points_viz;
-    // CorrespondenceVisualizer* corr_viz;
+    CorrespondenceVisualizer* corr_viz;
 
     geometry_msgs::msg::PoseStamped pose_msg;
     Eigen::Matrix3f global_tf;
@@ -65,7 +65,7 @@ public:
         pos_pub = this->create_publisher<geometry_msgs::msg::PoseStamped>(TOPIC_POS, 1);
         marker_pub = this->create_publisher<visualization_msgs::msg::Marker>(TOPIC_RVIZ, 1);
         points_viz = new PointVisualizer(marker_pub, "scan_match", FRAME_POINTS);
-        // corr_viz = new CorrespondenceVisualizer(marker_pub, "scan_match", FRAME_POINTS);
+        corr_viz = new CorrespondenceVisualizer(marker_pub, "scan_match", FRAME_POINTS);
         global_tf = Eigen::Matrix3f::Identity(3, 3);
     }
 
@@ -81,8 +81,8 @@ public:
             return;
         }
 
-        col.r = 1.0;
-        col.b = 0.0;
+        col.r = 0.0;
+        col.b = 1.0;
         col.g = 0.0;
         col.a = 1.0;
         points_viz->addPoints(prev_points, col);
@@ -101,9 +101,9 @@ public:
             /// getCorrespondence() function is the fast search function and 
             /// getNaiveCorrespondence() function is the naive search option.
 
-            // getCorrespondence(prev_points, transformed_points, points, jump_table, corresponds, A * count * count + MIN_INFO);
+            getCorrespondence(prev_points, transformed_points, points, jump_table, corresponds, A * count * count + MIN_INFO);
 
-            getNaiveCorrespondence(prev_points, transformed_points, points, jump_table, corresponds, A * count * count + MIN_INFO);
+            // getNaiveCorrespondence(prev_points, transformed_points, points, jump_table, corresponds, A * count * count + MIN_INFO);
 
             prev_trans = curr_trans;
             ++count;
@@ -117,7 +117,9 @@ public:
         col.g = 1.0;
         col.a = 1.0;
         points_viz->addPoints(transformed_points, col);
+        corr_viz->addCorrespondences(corresponds);
         points_viz->publishPoints();
+        corr_viz->publishCorrespondences();
 
         RCLCPP_INFO(this->get_logger(), "Count: %i", count);
 
@@ -137,7 +139,7 @@ public:
         const vector<float> &ranges = msg->ranges;
         points.clear();
 
-        for (int i = 0; i < ranges.size(); ++i)
+        for (int i = 0; i < int(ranges.size()); ++i)
         {
             float range = ranges.at(i);
             if (range > RANGE_LIMIT)

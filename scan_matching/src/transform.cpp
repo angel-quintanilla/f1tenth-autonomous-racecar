@@ -305,6 +305,16 @@ void updateTransform(vector<Correspondence> &corresponds, Transform &curr_trans)
     // Calculate M and g
     for (Correspondence c : corresponds)
     {
+      // references 2008-icra-plicp.pdf formulas to fill in below values
+      M_i << 1,0,c.p->getX(),-c.p->getY(),  0,1,c.p->getY(),c.p->getX();
+
+      pi_i << c.pj1->getX(),c.pj1->getY();
+
+      C_i = c.getNormalNorm()*(c.getNormalNorm().transpose());
+
+      // references 2008-icra-plicp.pdf formula 19 on page 5
+      M += (M_i.transpose())*C_i*M_i;
+      g += -2*(pi_i.transpose())*C_i*M_i;
     }
 
     // Define sub-matrices A, B, D from M

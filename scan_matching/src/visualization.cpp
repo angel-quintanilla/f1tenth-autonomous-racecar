@@ -29,33 +29,34 @@ void PointVisualizer::publishPoints() {
   dots.colors.clear();
 }
 
-// CorrespondenceVisualizer::CorrespondenceVisualizer(rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr& pub, string ns, string frame_id) : pub(pub), ns(ns),
-//       frame_id(frame_id) {
-//   line_list.header.frame_id = frame_id;
-//   line_list.ns = ns;
-//   line_list.action = visualization_msgs::msg::Marker::ADD;
-//   line_list.pose.orientation.w = 1.0;
-//   line_list.id = num_visuals;
-//   line_list.type = visualization_msgs::msg::Marker::LINE_LIST;
-//   line_list.scale.x = 0.05;
-//   num_visuals++;
-// }
+CorrespondenceVisualizer::CorrespondenceVisualizer(rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr& pub, string ns, string frame_id) : pub(pub), ns(ns),
+      frame_id(frame_id) {
+  line_list.header.frame_id = frame_id;
+  line_list.ns = ns;
+  line_list.action = visualization_msgs::msg::Marker::ADD;
+  line_list.pose.orientation.w = 1.0;
+  line_list.id = num_visuals;
+  line_list.type = visualization_msgs::msg::Marker::LINE_LIST;
+  line_list.scale.x = 0.05;
+  num_visuals++;
+}
 
-// void CorrespondenceVisualizer::addCorrespondences(vector<Correspondence> correspondences) {
-//   std_msgs::msg::ColorRGBA col;
-//   col.r = 1.0; col.b = 0.0; col.g = 0.0; col.a = 1.0;
-//   for (Correspondence c : correspondences) {
-//     line_list.points.push_back(c.p->getPoint());
-//     line_list.colors.push_back(col);
-//     line_list.points.push_back(c.getPiGeo());
-//     line_list.colors.push_back(col);
-//   }
-// }
+void CorrespondenceVisualizer::addCorrespondences(vector<Correspondence> correspondences) {
+  std_msgs::msg::ColorRGBA col;
+  col.r = 1.0; col.b = 0.0; col.g = 0.0; col.a = 1.0;
+  for (Correspondence c : correspondences) {
+    line_list.points.push_back(c.p->getPoint());
+    line_list.colors.push_back(col);
+    line_list.points.push_back(c.getPiGeo());
+    line_list.colors.push_back(col);
+  }
+}
 
-// void CorrespondenceVisualizer::publishCorrespondences() {
-//   line_list.header.stamp = this->clock->now();
-//   pub->publish(line_list);
-//   ROS_INFO("published dots");
-//   line_list.points.clear();
-//   line_list.colors.clear();
-// }
+void CorrespondenceVisualizer::publishCorrespondences() {
+  line_list.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();
+  pub->publish(line_list);
+  // ROS_INFO("published dots");
+  RCLCPP_INFO(rclcpp::get_logger("visualization"), "published dots");
+  line_list.points.clear();
+  line_list.colors.clear();
+}

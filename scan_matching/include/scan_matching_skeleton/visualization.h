@@ -23,16 +23,17 @@ public:
     ~PointVisualizer() {};
 };
 
-// class CorrespondenceVisualizer {
-// protected:
-// 	rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr& pub;
-// 	visualization_msgs::msg::Marker line_list;
-// 	string ns;
-// 	string frame_id;
+class CorrespondenceVisualizer {
+protected:
+	rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr& pub;
+	visualization_msgs::msg::Marker line_list;
+	rclcpp::Clock::SharedPtr clock;
+	string ns;
+	string frame_id;
 
-// public:
-// 	CorrespondenceVisualizer(rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr& pub, string ns, string frame_id);
-// 	void addCorrespondences(vector<Correspondence> corresponds);
-// 	void publishCorrespondences();
-//     ~CorrespondenceVisualizer() {};
-// };
+public:
+	CorrespondenceVisualizer(rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr& pub, string ns, string frame_id);
+	void addCorrespondences(vector<Correspondence> corresponds);
+	void publishCorrespondences();
+    ~CorrespondenceVisualizer() {};
+};
