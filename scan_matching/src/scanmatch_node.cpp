@@ -101,9 +101,9 @@ public:
             /// getCorrespondence() function is the fast search function and 
             /// getNaiveCorrespondence() function is the naive search option.
 
-            getCorrespondence(prev_points, transformed_points, points, jump_table, corresponds, A * count * count + MIN_INFO);
+            // getCorrespondence(prev_points, transformed_points, points, jump_table, corresponds, A * count * count + MIN_INFO);
 
-            // getNaiveCorrespondence(prev_points, transformed_points, points, jump_table, corresponds, A * count * count + MIN_INFO);
+            getNaiveCorrespondence(prev_points, transformed_points, points, jump_table, corresponds, A * count * count + MIN_INFO);
 
             prev_trans = curr_trans;
             ++count;

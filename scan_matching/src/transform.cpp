@@ -285,7 +285,7 @@ void updateTransform(vector<Correspondence> &corresponds, Transform &curr_trans)
   /// TODO: Implement the algorithm to find the transform.
   
   // You can change the number of iterations here. More the number of iterations, slower will be the convergence but more accurate will be the results. You need to find the right balance.
-  int number_iter = 1;
+  int number_iter = 5;
 
   for (int i = 0; i < number_iter; i++)
   {
