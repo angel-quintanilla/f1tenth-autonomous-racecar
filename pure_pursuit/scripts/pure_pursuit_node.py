@@ -5,8 +5,8 @@ from rclpy.node import Node
 import numpy as np
 from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped, AckermannDrive
+from nav_msgs.msg import Odometry
 # TODO CHECK: include needed ROS msg type headers and libraries
-
 class PurePursuit(Node):
     """ 
     Implement Pure Pursuit on the car
@@ -15,14 +15,27 @@ class PurePursuit(Node):
     def __init__(self):
         super().__init__('pure_pursuit_node')
         # TODO: create ROS subscribers and publishers
+        self.odom_sub = self.create_subscription (
+            Odometry,
+            '/ego_racecar/odom',
+            self.pose_callback,
+            10
+        )
 
     def pose_callback(self, pose_msg):
         pass
         # TODO: find the current waypoint to track using methods mentioned in lecture
+        # Step 1: Find current waypoint
+        # Step 2: Go towards way point with steering angle pointed to it.
+        # Step 3: Repeat
 
         # TODO: transform goal point to vehicle frame of reference
+        #??? 
 
         # TODO: calculate curvature/steering angle
+        # y = 2|y| / L2 <- Formula for steering angle
+        # L = Lookahead distance
+        # Y = y length on axis
 
         # TODO: publish drive message, don't forget to limit the steering angle.
 
