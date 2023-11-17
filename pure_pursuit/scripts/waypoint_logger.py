@@ -3,7 +3,6 @@ import rclpy
 from rclpy.node import Node
 
 import numpy as np
-import atexit
 import time
 
 from os.path import expanduser
