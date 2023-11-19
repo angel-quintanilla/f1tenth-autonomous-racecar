@@ -7,42 +7,48 @@ from ackermann_msgs.msg import AckermannDriveStamped, AckermannDrive
 from geometry_msgs.msg import PoseStamped
 from visualization_msgs.msg import Marker, MarkerArray
 from nav_msgs.msg import Odometry
+from tf_transformations import euler_from_quaternion
 
 import numpy as np
+import scipy.interpolate as spline
 import math
 
 class PurePursuit(Node):
 	IN_FILE = '/sim_ws/src/pure_pursuit/waypoints/waypoints.csv'
 	WAYPOINTS = []
 
-	STRAIGHT_AHEAD_SPEED = 2.0
+	STRAIGHT_AHEAD_SPEED = 4.5
 	STRAIGHT_AHEAD_THRESHOLD = 10 * np.pi / 180
-	WIDE_TURN_SPEED = 1.0
+	WIDE_TURN_SPEED = 2.25
 	WIDE_TURN_THRESHOLD = 20 * np.pi / 180
-	SHARP_TURN_SPEED = 0.75
+	SHARP_TURN_SPEED = 1.5
 	CURRENT_SPEED = 0.0
 	PREV_POS_X = 0.0
 	PREV_POS_Y = 0.0
-	
 	STEERING_ANGLE = 0.0
 	KP = 1.0
+
+	# for spline
+	TCK = 0.0
 	
 	def __init__(self):
 		super().__init__('pure_pursuit_node')
 
-		# self.odom_sub = self.create_subscription(
-		#     PoseStamped,
-		#     '/pf/viz/inferred_pose',
-		#     self.pose_callback,
-		#     10
-		# )
-
-		self.odom_sub = self.create_subscription (
-			Odometry,
-			'/ego_racecar/odom',
+		self.odom_sub = self.create_subscription(
+			PoseStamped,
+			'/pf/viz/inferred_pose',
 			self.pose_callback,
 			10
 		)
+
+		# for the simulator, without particle filter data
+		# must also change every instance of pose. to pose.pose.
+		# self.odom_sub = self.create_subscription (
+		# 	Odometry,
+		# 	'/ego_racecar/odom',
+		# 	self.pose_callback,
+		# 	10
+		# )
 
 		self.drive_pub = self.create_publisher(
 			AckermannDriveStamped,
@@ -56,75 +62,108 @@ class PurePursuit(Node):
 			1
 		)
 
+		self.marker_spline = self.create_publisher(
+			MarkerArray,
+			'visualization_marker_spline',
+			1
+		)
+
 		# Read waypoints from csv file
 		data = np.loadtxt(self.IN_FILE, delimiter=',', skiprows=1)
 
 		x_values = data[:, 0]  # x array
 		y_values = data[:, 1]  # y array
 
-		# Set precision in printing
-		np.set_printoptions(precision=3, suppress=True)
+		# make spline of waypoints
+		self.TCK, u = spline.splprep([x_values, y_values], k=3, s=0)
+		u_new = np.linspace(u.min(), u.max(), 1000)
+		interpolated_points = spline.splev(u_new, self.TCK)
+		self.WAYPOINTS = np.column_stack(interpolated_points)
 
-		# Make 2D Array
+		self.publish_all_spline_markers()
+
+		# Make 2D Array of waypoints
 		self.WAYPOINTS = np.column_stack((x_values, y_values))
 
 	def pose_callback(self, pose_msg):
 		# TODO: find the current waypoint to track using methods mentioned in lecture
-		car_position = [pose_msg.pose.pose.position.x, pose_msg.pose.pose.position.y]
-		car_orientation = np.arctan2(pose_msg.pose.pose.orientation.z, pose_msg.pose.pose.orientation.w)
+		# the position, orientation, and rotation of the vehicle
+		car_position = [pose_msg.pose.position.x, pose_msg.pose.position.y]
+		car_orientation = math.atan2(pose_msg.pose.orientation.z, pose_msg.pose.orientation.w)
 		car_rotation = (car_orientation * 180 / np.pi) * 2  # Convert to degrees
 		
+		# returns the closest waypoint in the list
 		closest_waypoint = self.get_waypoints(car_position, car_orientation)
+		# closest_waypoint = self.get_spline_point(car_position)
 
 		# TODO: transform goal point to vehicle frame of reference
+		# the relative frame
 		closest_waypoint_vehicle_frame = closest_waypoint - car_position
 
-		# TODO: calculate curvature/steering angle
-		rel_x = closest_waypoint_vehicle_frame[0]
-		rel_y = closest_waypoint_vehicle_frame[1]
+		# quaternion of position
+		quaternion = [
+			pose_msg.pose.orientation.x,
+			pose_msg.pose.orientation.y,
+			pose_msg.pose.orientation.z,
+			pose_msg.pose.orientation.w
+		]
+		# the euler angles from the quaternion
+		euler_angles = euler_from_quaternion(quaternion)
 
-		# Calculate the rotated coordinates
-		rotation_matrix = np.array([
-			[np.cos(car_orientation), np.sin(car_orientation)],
-			[-np.sin(car_orientation), np.cos(car_orientation)]
-		])
+		# the cars current angle (yaw)
+		car_angle = euler_angles[2]
 
-		rotated_coordinates = np.dot(rotation_matrix, np.array([rel_x, rel_y]))
-		rotated_rel_x, rotated_rel_y = rotated_coordinates
+		# rotation matrix for x and y
+		rotated_rel_x = closest_waypoint_vehicle_frame[0] * math.cos(-car_angle) - closest_waypoint_vehicle_frame[1] * math.sin(-car_angle)
+		rotated_rel_y = closest_waypoint_vehicle_frame[0] * math.sin(-car_angle) + closest_waypoint_vehicle_frame[1] * math.cos(-car_angle)
 
+		# Lookahead distance = euclidean distance between x and y
 		L = math.sqrt(rotated_rel_y**2 + rotated_rel_x**2)
 
-		radius = (L ** 2) / (2.0 * rotated_rel_y)  # L is lookahead distance, rel_y is y value from vehicle frame of reference
+		# TODO: calculate curvature/steering angle
+		# formula given in class
+		radius = (L ** 2) / (2.0 * np.abs(rotated_rel_y))  
 		self.STEERING_ANGLE = 1 / radius
+		
+		# if below axis, invert steering angle
+		if (rotated_rel_y < 0):
+			self.STEERING_ANGLE *= -1
 
 		# TODO: publish drive message, don't forget to limit the steering angle.
-		print("Euclidean distance:", L)
-		print("rel_x:", rel_x)
-		print("rel_y:", rel_y)
-		print("rotated_rel_x", rotated_rel_x)
-		print("rotated_rel_y", rotated_rel_y)
-		print("Car Rotation:", car_rotation)
-		print("Steering Angle:", self.STEERING_ANGLE * 180 / np.pi)
+		# print statements for debugging
+		# print(f"Euclidean distance: {L:.3f}")
+		# print(f"rotated_rel_x: {rotated_rel_x:.3f}")
+		# print(f"rotated_rel_y: {rotated_rel_y:.3f}")
+		# print(f"Car Rotation: {car_rotation:.5f}")
+		# print(f"Car Orientation: {car_orientation:.5f}")
+		# print(f"Car Angle: {car_angle:.4f}")
+		# print(f"Steering Angle: {self.STEERING_ANGLE * 180/np.pi:.5f}")
 		
-		# Clamp the steering angle
-		self.STEERING_ANGLE = max(-20 * np.pi / 180, min(self.STEERING_ANGLE, 20 * np.pi / 180))
+		# clamp angle based on anything greater than a wider turn (20 degrees)
+		if(self.STEERING_ANGLE < self.WIDE_TURN_THRESHOLD*-1): # if <-20, set to -20
+			self.STEERING_ANGLE = self.WIDE_TURN_THRESHOLD*-1
+		elif self.STEERING_ANGLE > self.WIDE_TURN_THRESHOLD: # if >20, set to 20
+			self.STEERING_ANGLE = self.WIDE_TURN_THRESHOLD
 
 		# Dynamic speed
-		# if (np.abs(self.STEERING_ANGLE) < self.STRAIGHT_AHEAD_THRESHOLD):  # < 10 degrees speed
-		#     self.CURRENT_SPEED = self.STRAIGHT_AHEAD_SPEED  # 0-10 degrees speed
-		# elif np.abs(self.STEERING_ANGLE) < self.WIDE_TURN_THRESHOLD:  # < 20 degrees speed
-		#     self.CURRENT_SPEED = self.WIDE_TURN_SPEED  # 10-20 degrees speed
-		# else:  # Anything that's not < 20
-		#     self.CURRENT_SPEED = self.SHARP_TURN_SPEED  # > 20 degrees speed
+		if (np.abs(self.STEERING_ANGLE) < self.STRAIGHT_AHEAD_THRESHOLD):  # < 10 degrees speed
+			self.CURRENT_SPEED = self.STRAIGHT_AHEAD_SPEED  # 0-10 degrees speed
+		elif np.abs(self.STEERING_ANGLE) < self.WIDE_TURN_THRESHOLD:  # < 20 degrees speed
+			self.CURRENT_SPEED = self.WIDE_TURN_SPEED  # 10-20 degrees speed
+		else:  # Anything that's not < 20
+			self.CURRENT_SPEED = self.SHARP_TURN_SPEED  # > 20 degrees speed
 
-		self.CURRENT_SPEED = 2.0
+		# self.CURRENT_SPEED = 1.0
 
-		# self.publish_drive(pose_msg)
+		self.publish_drive(pose_msg)
 
 		# Publish markers for visual waypoint validation
-		self.publish_marker(closest_waypoint, (0.0, 0.0, 1.0))
+		self.publish_marker(closest_waypoint, (0.0, 0.0, 1.0), 1)
+		
+		
+		
 
-	def publish_marker(self, position, color):
+	def publish_marker(self, position, color, bool):
 		marker = Marker()
 		marker.header.frame_id = 'map'
 		marker.type = Marker.SPHERE
@@ -168,12 +207,47 @@ class PurePursuit(Node):
 			closest_waypoint_index += 1  # Go to the next waypoint
 
 		# When the vehicle is too close to the waypoint, choose next waypoint
-		if (np.linalg.norm(waypoint_to_vehicle) < 0.6):
+		if (np.linalg.norm(waypoint_to_vehicle) < 0.8):
 			closest_waypoint_index += 1  # Go to the next waypoint
 		
 		# Makes sure that if last waypoint, gets to set first
 		closest_waypoint_index %= len(self.WAYPOINTS)  
 		return self.WAYPOINTS[closest_waypoint_index]
+	
+	def get_spline_point(self, position):
+		# need to determine how to use the spline and get the waypoint we need from it
+		pass
+
+	def publish_all_spline_markers(self):
+		marker_array = MarkerArray()
+
+		# Find the parameterization u corresponding to all points on the spline
+		u = spline.splprep(self.WAYPOINTS.T, k=3, s=0)[1]
+
+		for i in range(len(self.WAYPOINTS)):
+			point_on_spline = np.array(spline.splev(u[i], self.TCK)).flatten()
+
+			marker = Marker()
+			marker.header.frame_id = 'map'
+			marker.type = Marker.SPHERE
+			marker.action = Marker.ADD
+			marker.ns = 'spline_markers'  # Unique namespace for the markers
+			marker.id = i  # Unique ID within this namespace
+			marker.pose.position.x = point_on_spline[0]
+			marker.pose.position.y = point_on_spline[1]
+			marker.pose.position.z = 0.0
+			marker.pose.orientation.w = 1.0
+			marker.scale.x = 0.1
+			marker.scale.y = 0.1
+			marker.scale.z = 0.1
+			marker.color.a = 1.0
+			marker.color.r = 1.0
+			marker.color.g = 0.0
+			marker.color.b = 0.0
+
+			marker_array.markers.append(marker)
+
+		self.marker_spline.publish(marker_array)
 
 def main(args=None):
 	rclpy.init(args=args)
