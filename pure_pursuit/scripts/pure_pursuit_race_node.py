@@ -2,6 +2,7 @@
 import rclpy
 from rclpy.node import Node
 import numpy as np
+import scipy.interpolate as spline
 import math
 
 from ackermann_msgs.msg import AckermannDriveStamped
@@ -15,15 +16,18 @@ class PurePursuit(Node):
 	IN_FILE = '/sim_ws/src/pure_pursuit/waypoints/waypoints.csv'
 	WAYPOINTS = []
 
-	STRAIGHT_AHEAD_SPEED = 4.5
+	STRAIGHT_AHEAD_SPEED = 5.0
 	STRAIGHT_AHEAD_THRESHOLD = 10 * np.pi / 180
-	WIDE_TURN_SPEED = 2.25
+	WIDE_TURN_SPEED = 2.5
 	WIDE_TURN_THRESHOLD = 20 * np.pi / 180
-	SHARP_TURN_SPEED = 1.5
+	SHARP_TURN_SPEED = 1.75
 	CURRENT_SPEED = 0.0
 	PREV_POS_X = 0.0
 	PREV_POS_Y = 0.0
 	STEERING_ANGLE = 0.0
+
+	# for spline
+	TCK = 0.0
 	
 	def __init__(self):
 		super().__init__('pure_pursuit_node')
@@ -68,17 +72,22 @@ class PurePursuit(Node):
 		x_values = data[:, 0]  # x array
 		y_values = data[:, 1]  # y array
 
-		# Make 2D Array of waypoints
-		self.WAYPOINTS = np.column_stack((x_values, y_values))
+		# make spline of waypoints
+		self.TCK, u = spline.splprep([x_values, y_values], k=2, s=1)
+		u_new = np.linspace(u.min(), u.max(), 1000)
+		interpolated_points = spline.splev(u_new, self.TCK)
+		self.WAYPOINTS = np.column_stack(interpolated_points)
+
+		# self.publish_all_spline_markers()
 
 	def pose_callback(self, pose_msg):
 		# TODO: find the current waypoint to track using methods mentioned in lecture
 		# the position, orientation, and rotation of the vehicle
 		car_position = [pose_msg.pose.position.x, pose_msg.pose.position.y]
-		car_orientation = math.atan2(pose_msg.pose.orientation.z, pose_msg.pose.orientation.w)
 		
 		# returns the closest waypoint in the list
-		closest_waypoint = self.get_waypoints(car_position, car_orientation)
+		# closest_waypoint = self.get_waypoints(car_position, car_orientation)
+		closest_waypoint = self.get_spline_point(car_position)
 
 		# TODO: transform goal point to vehicle frame of reference
 		# the relative frame
@@ -91,6 +100,7 @@ class PurePursuit(Node):
 			pose_msg.pose.orientation.z,
 			pose_msg.pose.orientation.w
 		]
+
 		# the euler angles from the quaternion
 		euler_angles = euler_from_quaternion(quaternion)
 
@@ -113,7 +123,8 @@ class PurePursuit(Node):
 		if (rotated_rel_y < 0):
 			self.STEERING_ANGLE *= -1
 
-		# TODO: publish drive message, don't forget to limit the steering angle.		
+
+		# TODO: publish drive message, don't forget to limit the steering angle.
 		# clamp angle based on anything greater than a wider turn (20 degrees)
 		if(self.STEERING_ANGLE < self.WIDE_TURN_THRESHOLD*-1): # if <-20, set to -20
 			self.STEERING_ANGLE = self.WIDE_TURN_THRESHOLD*-1
@@ -158,31 +169,53 @@ class PurePursuit(Node):
 		drive_msg.drive.steering_angle = self.STEERING_ANGLE
 		drive_msg.drive.speed = self.CURRENT_SPEED
 		self.drive_pub.publish(drive_msg)
-
-	def get_waypoints(self, position, orientation):
+	
+	def get_spline_point(self, position):
 		# Euclidean distance between all current position and all waypoints
 		distance_to_all_waypoints = np.sqrt(np.sum((self.WAYPOINTS - position)**2, axis=1))
 
 		# Get the index of the smallest distance
 		closest_waypoint_index = np.argmin(distance_to_all_waypoints)
 
-		# If the waypoint at this index is behind the vehicle
-		waypoint_to_vehicle = self.WAYPOINTS[closest_waypoint_index] - position
-		
-		relative_angle = np.arctan2(waypoint_to_vehicle[1], waypoint_to_vehicle[0]) - orientation
+		# Adjust the waypoint index based on conditions
+		if np.abs(self.STEERING_ANGLE) < 5 * np.pi/180:  # < 10 degrees steering angle
+			closest_waypoint_index += int(self.CURRENT_SPEED * 10)
+		else:
+			closest_waypoint_index += 20
 
-		# Do dot multiplication on axis x, negative val = behind, 0 = side
-		# !!! This isn't perfectly working
-		if (np.dot(waypoint_to_vehicle, np.array([1.0, 0.0])) <= 0 or np.abs(relative_angle) > np.pi / 2):
-			closest_waypoint_index += 1  # Go to the next waypoint
-
-		# When the vehicle is too close to the waypoint, choose next waypoint
-		if (np.linalg.norm(waypoint_to_vehicle) < 0.8):
-			closest_waypoint_index += 1  # Go to the next waypoint
-		
-		# Makes sure that if last waypoint, gets to set first
-		closest_waypoint_index %= len(self.WAYPOINTS)  
+		closest_waypoint_index %= len(self.WAYPOINTS)
 		return self.WAYPOINTS[closest_waypoint_index]
+
+	def publish_all_spline_markers(self):
+		marker_array = MarkerArray()
+
+		# Find the parameterization u corresponding to all points on the spline
+		u = spline.splprep(self.WAYPOINTS.T, k=3, s=0)[1]
+
+		for i in range(len(self.WAYPOINTS)):
+			point_on_spline = np.array(spline.splev(u[i], self.TCK)).flatten()
+
+			marker = Marker()
+			marker.header.frame_id = 'map'
+			marker.type = Marker.SPHERE
+			marker.action = Marker.ADD
+			marker.ns = 'spline_markers'  # Unique namespace for the markers
+			marker.id = i  # Unique ID within this namespace
+			marker.pose.position.x = point_on_spline[0]
+			marker.pose.position.y = point_on_spline[1]
+			marker.pose.position.z = 0.0
+			marker.pose.orientation.w = 1.0
+			marker.scale.x = 0.1
+			marker.scale.y = 0.1
+			marker.scale.z = 0.1
+			marker.color.a = 1.0
+			marker.color.r = 1.0
+			marker.color.g = 0.0
+			marker.color.b = 0.0
+
+			marker_array.markers.append(marker)
+
+		self.marker_spline.publish(marker_array)
 
 def main(args=None):
 	rclpy.init(args=args)
