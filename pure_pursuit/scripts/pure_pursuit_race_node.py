@@ -16,7 +16,7 @@ class PurePursuit(Node):
 	IN_FILE = '/sim_ws/src/pure_pursuit/waypoints/waypoints.csv'
 	WAYPOINTS = []
 
-	STRAIGHT_AHEAD_SPEED = 5.0
+	STRAIGHT_AHEAD_SPEED = 4.5
 	STRAIGHT_AHEAD_THRESHOLD = 10 * np.pi / 180
 	WIDE_TURN_SPEED = 2.5
 	WIDE_TURN_THRESHOLD = 20 * np.pi / 180
@@ -67,13 +67,13 @@ class PurePursuit(Node):
 		)
 
 		# Read waypoints from csv file
-		data = np.loadtxt(self.IN_FILE, delimiter=',', skiprows=1)
+		data = np.loadtxt(self.IN_FILE, delimiter=',', skiprows=0)
 
 		x_values = data[:, 0]  # x array
 		y_values = data[:, 1]  # y array
 
 		# make spline of waypoints
-		self.TCK, u = spline.splprep([x_values, y_values], k=2, s=1)
+		self.TCK, u = spline.splprep([x_values, y_values], k=3, s=0)
 		u_new = np.linspace(u.min(), u.max(), 1000)
 		interpolated_points = spline.splev(u_new, self.TCK)
 		self.WAYPOINTS = np.column_stack(interpolated_points)
@@ -140,7 +140,7 @@ class PurePursuit(Node):
 			self.CURRENT_SPEED = self.SHARP_TURN_SPEED  # > 20 degrees speed
 
 		# Publish markers for visual waypoint validation
-		self.publish_marker(closest_waypoint, (0.0, 0.0, 1.0))
+		# self.publish_marker(closest_waypoint, (0.0, 0.0, 1.0))
 
 		self.publish_drive(pose_msg)
 
@@ -181,7 +181,7 @@ class PurePursuit(Node):
 		if np.abs(self.STEERING_ANGLE) < 5 * np.pi/180:  # < 10 degrees steering angle
 			closest_waypoint_index += int(self.CURRENT_SPEED * 10)
 		else:
-			closest_waypoint_index += 20
+			closest_waypoint_index += 40
 
 		closest_waypoint_index %= len(self.WAYPOINTS)
 		return self.WAYPOINTS[closest_waypoint_index]
