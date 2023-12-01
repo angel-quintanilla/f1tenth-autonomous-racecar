@@ -8,7 +8,7 @@ from ackermann_msgs.msg import AckermannDriveStamped
 from geometry_msgs.msg import PoseStamped
 from visualization_msgs.msg import Marker, MarkerArray
 from tf_transformations import euler_from_quaternion
-# from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry
 
 
 class PurePursuit(Node):
@@ -28,21 +28,21 @@ class PurePursuit(Node):
 	def __init__(self):
 		super().__init__('pure_pursuit_node')
 
-		self.odom_sub = self.create_subscription(
-			PoseStamped,
-			'/pf/viz/inferred_pose',
-			self.pose_callback,
-			10
-		)
-
-		# for the simulator, without particle filter data
-		# must also change every instance of pose. to pose.pose.
-		# self.odom_sub = self.create_subscription (
-		# 	Odometry,
-		# 	'/ego_racecar/odom',
+		# self.odom_sub = self.create_subscription(
+		# 	PoseStamped,
+		# 	'/pf/viz/inferred_pose',
 		# 	self.pose_callback,
 		# 	10
 		# )
+
+		# for the simulator, without particle filter data
+		# must also change every instance of pose. to pose.pose.
+		self.odom_sub = self.create_subscription (
+			Odometry,
+			'/ego_racecar/odom',
+			self.pose_callback,
+			10
+		)
 
 		self.drive_pub = self.create_publisher(
 			AckermannDriveStamped,
@@ -74,8 +74,8 @@ class PurePursuit(Node):
 	def pose_callback(self, pose_msg):
 		# TODO: find the current waypoint to track using methods mentioned in lecture
 		# the position, orientation, and rotation of the vehicle
-		car_position = [pose_msg.pose.position.x, pose_msg.pose.position.y]
-		car_orientation = math.atan2(pose_msg.pose.orientation.z, pose_msg.pose.orientation.w)
+		car_position = [pose_msg.pose.pose.position.x, pose_msg.pose.pose.position.y]
+		car_orientation = math.atan2(pose_msg.pose.pose.orientation.z, pose_msg.pose.pose.orientation.w)
 		
 		# returns the closest waypoint in the list
 		closest_waypoint = self.get_waypoints(car_position, car_orientation)
@@ -86,10 +86,10 @@ class PurePursuit(Node):
 
 		# quaternion of position
 		quaternion = [
-			pose_msg.pose.orientation.x,
-			pose_msg.pose.orientation.y,
-			pose_msg.pose.orientation.z,
-			pose_msg.pose.orientation.w
+			pose_msg.pose.pose.orientation.x,
+			pose_msg.pose.pose.orientation.y,
+			pose_msg.pose.pose.orientation.z,
+			pose_msg.pose.pose.orientation.w
 		]
 		# the euler angles from the quaternion
 		euler_angles = euler_from_quaternion(quaternion)
